@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: machineguard-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DEBUG
+        value: false
+      - key: MODEL_PATH
+        value: artifacts/cat_model.joblib
