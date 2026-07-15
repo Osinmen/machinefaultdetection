@@ -7,7 +7,7 @@ differences between healthy and faulty machines in training data.
 """
 
 from typing import List, Dict, Any
-from app.core.threshold import SENSOR_THRESHOLDS
+from app.core.thresholds import SENSOR_THRESHOLDS
 
 
 def _check_sensor(feature_name: str, value: float) -> Dict[str, Any] | None:
