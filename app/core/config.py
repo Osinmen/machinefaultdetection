@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Model
-    MODEL_PATH: str = str(BASE_DIR / "artifacts" / "lightgbm_model.pkl")
+    MODEL_PATH: str = str(BASE_DIR / "artifacts" / "model_LightGBM.pkl")
 
     # CORS — allow all in dev; tighten in prod
     ALLOWED_ORIGINS: List[str] = ["*"]
