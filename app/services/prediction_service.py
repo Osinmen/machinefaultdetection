@@ -1,8 +1,9 @@
 import logging
+import uuid
 from app.schemas.prediction import SensorInput
-from app.schemas.response import PredictionResponse, RiskLevel, SensorAlert
-from app.services.model_service import ModelService
-from app.services.feature_engineering import engineer_features, get_engineered_values
+from app.schemas.response import PredictionResponse, SensorAlert
+from app.services.model_service import ModelService, CLASS_NAMES
+from app.services.feature_engineering import build_feature_row, get_raw_sensor_values
 from app.services.sensor_diagnostics import run_sensor_diagnostics
 from app.core.config import settings
 from app.core.exceptions import FeatureEngineeringException
@@ -10,48 +11,54 @@ from app.core.exceptions import FeatureEngineeringException
 logger = logging.getLogger(__name__)
 
 
-def get_recommendation(risk_level: RiskLevel, risk_pct: float) -> str:
-    if risk_level == RiskLevel.CRITICAL:
-        return "CRITICAL: Immediate inspection required. Take machine offline if possible."
-    elif risk_level == RiskLevel.AT_RISK:
-        return f"WARNING: Schedule maintenance within 3-5 days. Risk at {risk_pct:.1f}%."
-    else:
+def get_recommendation(predicted_class: str, confidence: float, low_confidence: bool) -> str:
+    if predicted_class == "healthy":
+        if low_confidence:
+            return "Likely healthy, but confidence is low — recheck sensor readings or re-run shortly."
         return "Machine is healthy. Continue standard monitoring schedule."
+
+    label = predicted_class.replace("_", " ")
+    if low_confidence:
+        return (
+            f"Possible {label} fault detected, but confidence is low "
+            f"({confidence * 100:.1f}%) — verify readings before acting."
+        )
+    return f"{label.capitalize()} fault detected (confidence {confidence * 100:.1f}%). Schedule inspection."
+
 
 def run_prediction(data: SensorInput) -> PredictionResponse:
     try:
-        # Get engineered values for sensor diagnostics (before dropping cols)
-        eng_values = get_engineered_values(data)
-
-        # Get feature DataFrame for model (after dropping cols)
-        features_df = engineer_features(data)
+        raw_sensor_values = get_raw_sensor_values(data)
+        features_df = build_feature_row(data)
     except Exception as e:
         raise FeatureEngineeringException(str(e))
 
-    # ML Prediction
-    model       = ModelService.get_model()
-    prediction  = int(model.predict(features_df)[0])
-    probability = float(model.predict_proba(features_df)[0][1])
-    risk_pct    = round(probability * 100, 2)
+    # ML Prediction — multi-class, 5 possible fault types
+    model = ModelService.get_model()
+    probabilities = model.predict_proba(features_df)[0]
 
-    if probability >= settings.CRITICAL_RISK_THRESHOLD:
-        risk_level = RiskLevel.CRITICAL
-    elif probability >= settings.HIGH_RISK_THRESHOLD:
-        risk_level = RiskLevel.AT_RISK
-    else:
-        risk_level = RiskLevel.HEALTHY
+    class_probabilities = {
+        CLASS_NAMES[i]: round(float(p), 4) for i, p in enumerate(probabilities)
+    }
+    predicted_idx = int(probabilities.argmax())
+    predicted_class = CLASS_NAMES[predicted_idx]
+    confidence = float(probabilities[predicted_idx])
+    low_confidence = confidence < settings.LOW_CONFIDENCE_THRESHOLD
 
-    # Sensor Diagnostics — independent rule engine
-    diagnostics   = run_sensor_diagnostics(eng_values)
+    # Sensor Diagnostics (independent rule engine, runs on raw readings)
+    diagnostics = run_sensor_diagnostics(raw_sensor_values)
     sensor_alerts = [SensorAlert(**a) for a in diagnostics["sensor_alerts"]]
 
+    machine_id = data.machine_id or f"MCH-{uuid.uuid4().hex[:8].upper()}"
+
     return PredictionResponse(
-        machine_id=data.machine_id,
-        prediction=prediction,
-        risk_probability=probability,
-        risk_percentage=risk_pct,
-        risk_level=risk_level,
-        recommendation=get_recommendation(risk_level, risk_pct),
+        machine_id=machine_id,
+        predicted_class=predicted_class,
+        confidence=round(confidence, 4),
+        class_probabilities=class_probabilities,
+        is_healthy=(predicted_class == "healthy"),
+        low_confidence=low_confidence,
+        recommendation=get_recommendation(predicted_class, confidence, low_confidence),
         sensor_alerts=sensor_alerts,
         alert_count=diagnostics["alert_count"],
         critical_count=diagnostics["critical_count"],

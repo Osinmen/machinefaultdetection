@@ -6,6 +6,10 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.api.v1.router import api_router
 from app.services.model_service import ModelService
+from app.core.exceptions import (
+    ModelNotLoadedException, FeatureEngineeringException, InvalidInputException,
+    model_not_loaded_handler, feature_engineering_handler, invalid_input_handler,
+)
 
 setup_logging()
 
@@ -31,6 +35,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_exception_handler(ModelNotLoadedException, model_not_loaded_handler)
+app.add_exception_handler(FeatureEngineeringException, feature_engineering_handler)
+app.add_exception_handler(InvalidInputException, invalid_input_handler)
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 

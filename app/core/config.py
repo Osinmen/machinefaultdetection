@@ -11,14 +11,16 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Model
-    MODEL_PATH: str = str(BASE_DIR / "artifacts" / "cat_model.joblib")
+    MODEL_PATH: str = str(BASE_DIR / "artifacts" / "lightgbm_model.pkl")
 
     # CORS — allow all in dev; tighten in prod
     ALLOWED_ORIGINS: List[str] = ["*"]
 
-    # Risk thresholds
-    HIGH_RISK_THRESHOLD: float = 0.5   # >= 50% → AT RISK
-    CRITICAL_RISK_THRESHOLD: float = 0.75  # >= 75% → CRITICAL
+    # Below this, the top predicted class's probability is considered
+    # too close to flag confidently — response marks low_confidence=True
+    # rather than picking a binary risk tier (multi-class output has no
+    # single "risk score" the way the old binary model did).
+    LOW_CONFIDENCE_THRESHOLD: float = 0.5
 
     class Config:
         env_file = ".env"

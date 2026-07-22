@@ -1,47 +1,41 @@
 from pydantic import BaseModel, Field, field_validator
 from pydantic.config import ConfigDict
+from typing import Optional
 
-# Real machine types from the training dataset
-VALID_MACHINE_TYPES = [
-    "CMM",
-    "CNC Lathe",
-    "Industrial Chiller",
-    "Injection Molder",
-    "Labeler",
-    "Pump",
-    "Vacuum Packer",
-    "Conveyor Belt",  # reference category (dropped in encoding)
-]
+# Categories the model was actually trained on — baked into the
+# fitted OneHotEncoder, so anything outside these lists is silently
+# treated as "unknown" by the pipeline rather than raising an error.
+VALID_MACHINE_TYPES = ["CNC", "Compressor", "Pump", "Robotic Arm"]
+VALID_OPERATING_MODES = ["idle", "normal", "peak"]
+
 
 class SensorInput(BaseModel):
-    machine_id: str = Field(..., example="MCH-001")
+    machine_id: Optional[str] = Field(None, example="MCH-001")
     machine_type: str = Field(..., example="Pump")
-    installation_year: int = Field(..., ge=1990, le=2026, example=2018)
-    temperature_c: float = Field(..., example=75.4)
-    vibration_mms: float = Field(..., example=3.2)
-    power_consumption_kw: float = Field(..., example=12.5)
-    operational_hours: float = Field(..., ge=0, example=14500)
-    last_maintenance_days_ago: int = Field(..., ge=0, example=45)
-    maintenance_history_count: int = Field(..., ge=0, example=8)
-    failure_history_count: int = Field(..., ge=0, example=2)
-    oil_level_pct: float = Field(..., ge=0, le=100, example=72.0)
-    coolant_level_pct: float = Field(..., ge=0, le=100, example=85.0)
-    ai_supervision: bool = Field(..., example=True)
-    ai_override_events: int = Field(..., ge=0, example=3)
-    remaining_useful_life_days: float = Field(..., ge=0, example=120.0)
-    error_codes_last_30_days: int = Field(..., ge=0, example=2)
-    sound_db: float = Field(..., ge=0, example=68.5)
+    operating_mode: str = Field(..., example="normal")
 
-    @field_validator("temperature_c", "vibration_mms", "power_consumption_kw")
+    vibration_rms: float = Field(..., ge=0, example=2.4)
+    temperature_motor: float = Field(..., example=68.5)
+    current_phase_avg: float = Field(..., ge=0, example=9.2)
+    pressure_level: float = Field(..., ge=0, example=55.0)
+    rpm: float = Field(..., ge=0, example=1200)
+    hours_since_maintenance: float = Field(..., ge=0, example=150)
+    ambient_temp: float = Field(..., example=13.0)
+
+    @field_validator("machine_type")
     @classmethod
-    def must_be_non_negative(cls, v, info):
-        if v < 0:
-            raise ValueError(f"{info.field_name} cannot be negative")
+    def machine_type_valid(cls, v):
+        if v not in VALID_MACHINE_TYPES:
+            raise ValueError(
+                f"machine_type must be one of {VALID_MACHINE_TYPES}, got '{v}'"
+            )
         return v
 
-    @field_validator("installation_year")
+    @field_validator("operating_mode")
     @classmethod
-    def year_not_future(cls, v):
-        if v > 2026:
-            raise ValueError("Installation year cannot be in the future")
+    def operating_mode_valid(cls, v):
+        if v not in VALID_OPERATING_MODES:
+            raise ValueError(
+                f"operating_mode must be one of {VALID_OPERATING_MODES}, got '{v}'"
+            )
         return v
